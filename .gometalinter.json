@@ -1,0 +1,9 @@
+{
+  "Vendor": true,
+  "Deadline": "2m",
+  "Sort": ["linter", "severity", "path", "line"],
+  "Disable":[],
+  "Enableall":true,
+  "Cyclo": 16,
+  "LineLength": 200
+}
