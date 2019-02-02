@@ -25,14 +25,11 @@ build:
 	go build -o build/app_cgo .
 
 build_cgo:
-	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o build/app_cgo .
+	docker build -t vorona/docker_swarm_deploy_webhook .
 
 pub: build_cgo
-	docker build -t ddw .
-	docker tag ddw docker-registry.private-host.com/docker_deploy_webhook:${TAG}
-	docker push docker-registry.private-host.com/docker_deploy_webhook:${TAG}
+	docker tag vorona/docker_swarm_deploy_webhook docker-registry.private-host.com/docker_deploy_webhook:${TAG}
+	docker push                                   docker-registry.private-host.com/docker_deploy_webhook:${TAG}
 
 publish: build_cgo
-	docker build -t ddw .
-	docker tag ddw vorona/docker_deploy_webhook:${TAG}
-	docker push vorona/docker_deploy_webhook:${TAG}
+	docker push vorona/docker_swarm_deploy_webhook:${TAG}

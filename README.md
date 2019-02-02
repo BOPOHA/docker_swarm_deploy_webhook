@@ -26,22 +26,24 @@ Create temporary file `/tmp/config.json` with configuration by example:
       "Services": {
         "my-docker-registry.private-host.com/projectq-app:latest": "projectq-stack-latest_backend",
         "my-docker-registry.private-host.com/projectq-app:stage": "projectq-stack-stage_backend",
-        "vorona/docker-deploy-webhook:latest": "docker-deploy-webhook"
+        "vorona/docker_swarm_deploy_webhook:latest": "webhook-latest"
       },
       "APISecretKey": "WebhookSecretKeyChangeME"
     }
 
 Create Base64 encoded string:
 
-    $ cat  /tmp/config.json | base64 -w0
-    ewogICJQcml2YXRlUmVnaXN0cnkiOiB7CiAgICAidXNlcm5hbWUiOiAidXNlciIsCiAgICAicGFzc3dvcmQiOiAic3VwZXJzZWNyZXRwYXNzd29yZCIsCiAgICAic2VydmVyYWRkcmVzcyI6ICJteS1kb2NrZXItcmVnaXN0cnkucHJpdmF0ZS1ob3N0LmNvbSIKICB9LAogICJTZXJ2aWNlcyI6IHsKICAgICJteS1kb2NrZXItcmVnaXN0cnkucHJpdmF0ZS1ob3N0LmNvbS9wcm9qZWN0cS1hcHA6bGF0ZXN0IjogInByb2plY3RxLXN0YWNrLWxhdGVzdF9iYWNrZW5kIiwKICAgICJteS1kb2NrZXItcmVnaXN0cnkucHJpdmF0ZS1ob3N0LmNvbS9wcm9qZWN0cS1hcHA6c3RhZ2UiOiAicHJvamVjdHEtc3RhY2stc3RhZ2VfYmFja2VuZCIsCiAgICAidm9yb25hL2RvY2tlci1kZXBsb3ktd2ViaG9vazpsYXRlc3QiOiAiZG9ja2VyLWRlcGxveS13ZWJob29rIgogIH0sCiAgIkFQSVNlY3JldEtleSI6ICJX
+    $ CONFIG=`cat  /tmp/config.json | base64 -w0`
+    $ echo $CONFIG
+    ewoJICAiUHJpdmF0ZVJlZ2lzdHJ5IjogewoJCSAgICAgICJ1c2VybmFtZSI6ICJ1c2VyIiwKCQkgICAgICAicGFzc3dvcmQiOiAic3VwZXJzZWNyZXRwYXNzd29yZCIsCgkJICAgICAgInNlcnZlcmFkZHJlc3MiOiAibXktZG9ja2VyLXJlZ2lzdHJ5LnByaXZhdGUtaG9zdC5jb20iCgkJICAgIH0sCgkJICAiU2VydmljZXMiOiB7CgkJCSAgICAgICJteS1kb2NrZXItcmVnaXN0cnkucHJpdmF0ZS1ob3N0LmNvbS9wcm9qZWN0cS1hcHA6bGF0ZXN0IjogInByb2plY3RxLXN0YWNrLWxhdGVzdF9iYWNrZW5kIiwKCQkJICAgICAgIm15LWRvY2tlci1yZWdpc3RyeS5wcml2YXRlLWhvc3QuY29tL3Byb2plY3RxLWFwcDpzdGFnZSI6ICJwcm9qZWN0cS1zdGFjay1zdGFnZV9iYWNrZW5kIiwKCQkJICAgICAgInZvcm9uYS9kb2NrZXJfc3dhcm1fZGVwbG95X3dlYmhvb2s6bGF0ZXN0IjogIndlYmhvb2stbGF0ZXN0IgoJCQkgICAgfSwKCQkgICJBUElTZWNyZXRLZXkiOiAiV2ViaG9va1NlY3JldEtleUNoYW5nZU1FIgp9Cgo=
+    
 
 Deploy your docker-deploy-webhook to a swarm:
 
-    docker service create --name docker-deploy-webhook --constraint "node.role==manager" --publish=8081:8081 \
+    docker service create --name webhook-latest --constraint "node.role==manager" --publish=8081:8081 \
        --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock \
-       -e DDW_CONFIG="ewogICJQcml2YXRlUmVnaXN0cnkiOiB7CiAgICAidXNlcm5hbWUiOiAidXNlciIsCiAgICAicGFzc3dvcmQiOiAic3VwZXJzZWNyZXRwYXNzd29yZCIsCiAgICAic2VydmVyYWRkcmVzcyI6ICJteS1kb2NrZXItcmVnaXN0cnkucHJpdmF0ZS1ob3N0LmNvbSIKICB9LAogICJTZXJ2aWNlcyI6IHsKICAgICJteS1kb2NrZXItcmVnaXN0cnkucHJpdmF0ZS1ob3N0LmNvbS9wcm9qZWN0cS1hcHA6bGF0ZXN0IjogInByb2plY3RxLXN0YWNrLWxhdGVzdF9iYWNrZW5kIiwKICAgICJteS1kb2NrZXItcmVnaXN0cnkucHJpdmF0ZS1ob3N0LmNvbS9wcm9qZWN0cS1hcHA6c3RhZ2UiOiAicHJvamVjdHEtc3RhY2stc3RhZ2VfYmFja2VuZCIsCiAgICAidm9yb25hL2RvY2tlci1kZXBsb3ktd2ViaG9vazpsYXRlc3QiOiAiZG9ja2VyLWRlcGxveS13ZWJob29rIgogIH0sCiAgIkFQSVNlY3JldEtleSI6ICJX" \
-       vorona/docker_deploy_webhook:latest
+       -e DDW_CONFIG="$CONFIG" \
+       vorona/docker_swarm_deploy_webhook:latest
 
 
 ## Configure Docker Hub to use Webhook
@@ -102,19 +104,16 @@ To test locally with the example payload:
    
 # BUILD
 
-    # go build -o app .
-    CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o app .
-    docker build -t ddw .
+    docker build -t vorona/docker_swarm_deploy_webhook .
     
     # push to docker hub:
     docker login # paste credentialt to hub.docker.com
-    docker tag ddw vorona/docker_deploy_webhook:latest
-    docker push    vorona/docker_deploy_webhook:latest
+    docker push    vorona/docker_swarm_deploy_webhook:latest
     
     # push to docker registry:
     docker login my-docker-registry.private-host.com # paste credentialt to you private registry
-    docker tag ddw my-docker-registry.private-host.com/docker_deploy_webhook:latest
-    docker push    my-docker-registry.private-host.com/docker_deploy_webhook:latest
+    docker push  my-docker-registry.private-host.com/docker_swarm_deploy_webhook:latest
 
 ## Manually update:
-    docker service update --image vorona/docker_deploy_webhook:latest ddw
+    docker service update --image vorona/docker_swarm_deploy_webhook:latest webhook-latest
+    docker service update --env-add DDW_CONFIG="$CONFIG" webhook-latest

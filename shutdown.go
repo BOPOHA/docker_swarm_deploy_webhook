@@ -14,5 +14,5 @@ type shutdownHandler struct {
 func (h *shutdownHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	go withouterrIOClose(h.server)
-	LogRespWriter(w.Write([]byte(byebyeMessage)))
+	wWrite(w, []byte(byebyeMessage))
 }

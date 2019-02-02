@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 )
 
 // go test -coverprofile=/tmp/cover.out && go tool cover -html=/tmp/cover.out
@@ -41,7 +42,7 @@ func main() {
 }
 
 func startService(addr string) (*http.Server, errExt) {
-
+	Logz("Staring webhookd service. %s", time.Now())
 	rawConfig, err := base64.URLEncoding.DecodeString(os.Getenv(configENVName))
 	if err != nil {
 		return nil, errExt{fmt.Sprintf("can't decode base64 value ENV[%s]: %s", configENVName, os.Getenv(configENVName)), err}
@@ -52,11 +53,15 @@ func startService(addr string) (*http.Server, errExt) {
 	if err != nil {
 		return nil, errExt{fmt.Sprintf("can't decode json value: '%s'", rawConfig), err}
 	}
+	swarmUpdateOpts := types.ServiceUpdateOptions{
+		QueryRegistry:    true,
+		RegistryAuthFrom: createBase64AuthData(config.PrivateRegistry),
+	}
 	Logz("unmarshaled environ param %s", configENVName)
 	mux := http.NewServeMux()
 	s := &http.Server{Addr: addr, Handler: mux}
 	mux.Handle(shutdownEnpoint, &shutdownHandler{s})
-	mux.Handle("/", &SwarmServiceHandler{config})
+	mux.Handle("/", &SwarmServiceHandler{config, swarmUpdateOpts})
 	if err := s.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return nil, errExt{fmt.Sprintf("can't bind service to %s", addr), err}
 	}

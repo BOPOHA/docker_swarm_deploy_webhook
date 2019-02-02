@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"github.com/docker/distribution/notifications"
 	"io"
-	"io/ioutil"
 	"net/http"
 )
 
@@ -41,9 +40,6 @@ func (h *SwarmServiceHandler) updateService(params HookParamsFromPayload) error 
 	}
 	ctx := context.Background()
 
-	authBytes := withouterrJSONMarshal(h.config.PrivateRegistry)
-	authBase64 := base64.URLEncoding.EncodeToString(authBytes)
-
 	if cli, err := docker.NewEnvClient(); err == nil {
 		defer withouterrIOClose(cli)
 		if service, _, errCliService := cli.ServiceInspectWithRaw(
@@ -55,14 +51,10 @@ func (h *SwarmServiceHandler) updateService(params HookParamsFromPayload) error 
 				service.ID,
 				swarm.Version{Index: service.Version.Index},
 				*spec,
-				types.ServiceUpdateOptions{
-					//QueryRegistry:       true,
-					EncodedRegistryAuth: authBase64,
-					//RegistryAuthFrom: "spec",
-				}); errCliServiceUpd == nil {
-				fmt.Println(respServiceUpdate.Warnings)
+				h.updateOpts); errCliServiceUpd == nil {
+				Logz("Update warnings: %s", respServiceUpdate.Warnings)
 				message := "SERVICE UPDATED - " + params.serviceName + " " + service.ID
-				fmt.Println(message)
+				Logz(message)
 			} else {
 				return fmt.Errorf("updating a service: %s, %s", service.ID, errCliServiceUpd)
 			}
@@ -80,13 +72,8 @@ func (h *SwarmServiceHandler) getHookParamsFromPayload(body io.Reader, endpoint 
 
 	if endpoint == APIEndpointWebHookRegistry {
 		payload := DockerRegistryV2Payload{}
-
-		rawBody, errRe := ioutil.ReadAll(body)
-		if errRe != nil {
-			return params, errRe
-		}
-		err := json.Unmarshal(rawBody, &payload)
-		if err != nil {
+		decoder := json.NewDecoder(body)
+		if err := decoder.Decode(&payload); err != nil {
 			return params, err
 		}
 
@@ -99,8 +86,7 @@ func (h *SwarmServiceHandler) getHookParamsFromPayload(body io.Reader, endpoint 
 			if firstEvent.Action == "pull" {
 				return params, errors.New("PULL is an excluded method")
 			}
-			Logz("%s", rawBody)
-			Logz("%+v", payload)
+			Logz("Got payload from %s: %+v", APIEndpointWebHookRegistry, payload)
 			params.registryImage = firstEvent.Request.Host + "/" + firstEvent.Target.Repository + ":" + firstEvent.Target.Tag
 			params.serviceName = h.config.Services[params.registryImage]
 			return params, nil
@@ -114,7 +100,7 @@ func (h *SwarmServiceHandler) getHookParamsFromPayload(body io.Reader, endpoint 
 		if err := decoder.Decode(&payload); err != nil {
 			return params, err
 		}
-		Logz("%+v", payload)
+		Logz("Got payload from %s: %+v", APIEndpointWebHookDockerHub, payload)
 		params.registryImage = payload.Repository.RepoName + ":" + payload.PushData.Tag
 		params.serviceName = h.config.Services[params.registryImage]
 		return params, nil
@@ -132,7 +118,8 @@ type HookParamsFromPayload struct {
 
 // SwarmServiceHandler - main http handler
 type SwarmServiceHandler struct {
-	config mainConfig
+	config     mainConfig
+	updateOpts types.ServiceUpdateOptions
 }
 
 func (h *SwarmServiceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -150,7 +137,7 @@ func (h *SwarmServiceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 						data := withouterrJSONMarshal(CR{
 							"error": "can't decode payload: " + err.Error(),
 						})
-						LogRespWriter(w.Write(data))
+						wWrite(w, data)
 						return
 					}
 					Logz("%+v", plParams)
@@ -161,19 +148,19 @@ func (h *SwarmServiceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 						resp := withouterrJSONMarshal(CR{
 							"error": fmt.Sprintf("empty ServiceName, exit. IMG: %s", plParams.registryImage),
 						})
-						LogRespWriter(w.Write(resp))
+						wWrite(w, resp)
 						return
 					}
 					// UPDATING SERVICE:
 					if err := h.updateService(plParams); err == nil {
 						w.WriteHeader(http.StatusOK)
-						LogRespWriter(w.Write([]byte(`{"status": "OK"}`)))
+						wWrite(w, []byte(`{"status": "OK"}`))
 					} else {
 						w.WriteHeader(http.StatusBadRequest)
 						data := withouterrJSONMarshal(CR{
 							"error": err.Error(),
 						})
-						LogRespWriter(w.Write(data))
+						wWrite(w, data)
 					}
 					return
 				}
@@ -186,4 +173,14 @@ func (h *SwarmServiceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	} else {
 		http.Error(w, `{"error":"bad method"}`, http.StatusMethodNotAllowed)
 	}
+}
+
+func createBase64AuthData(config types.AuthConfig) string {
+	var authBase64 string
+	if config.Username != "" && config.Password != "" {
+		authBytes := withouterrJSONMarshal(config)
+		authBase64 = base64.URLEncoding.EncodeToString(authBytes)
+		Logz("Auth bytes and base64: %s , %s.", authBytes, authBase64)
+	}
+	return authBase64
 }

@@ -23,6 +23,12 @@ func LogRespWriter(n int, err error) {
 	}
 }
 
+// wWriter - just wrapper for w.Write([]byte)
+func wWrite(w io.Writer, data []byte) {
+	LogRespWriter(w.Write(data))
+	Logz("Response: %s", data)
+}
+
 // Logz - wrapper for debug logs
 func Logz(format string, a ...interface{}) {
 	fmt.Printf(format+"\n", a...)
@@ -47,7 +53,7 @@ func withouterrIOClose(c io.Closer) {
 	err := c.Close()
 	if err != nil {
 		//LogErr(errExt{"can't close IO", err})
-		Logz(err.Error())
+		Logz("can't close IO: %s", err.Error())
 	}
 }
 

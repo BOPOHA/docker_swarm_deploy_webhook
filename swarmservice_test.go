@@ -36,7 +36,7 @@ func TestSwarmErrorsWithSockerServerFakeTLS(t *testing.T) {
 	}
 	time.Sleep(20 * time.Millisecond)
 	config := testConfig
-	ts := httptest.NewServer(&SwarmServiceHandler{config})
+	ts := httptest.NewServer(&SwarmServiceHandler{config, testUpdateOpts})
 
 	cases := []Case{
 		{ // case 0
@@ -62,7 +62,7 @@ func TestSwarmErrorsWithSockerServerFakeTLS(t *testing.T) {
 func TestSwarmErrorsWithSockerServerFakeCodes(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 	config := testConfig
-	ts := httptest.NewServer(&SwarmServiceHandler{config})
+	ts := httptest.NewServer(&SwarmServiceHandler{config, testUpdateOpts})
 
 	cases := []Case{
 		{ // case 0
@@ -123,7 +123,7 @@ func (errReader) Read(p []byte) (n int, err error) {
 }
 
 func TestSwarmErrorsWithIoutilReadAll(t *testing.T) {
-	h := &SwarmServiceHandler{testConfig}
+	h := &SwarmServiceHandler{testConfig, testUpdateOpts}
 	_, err := h.getHookParamsFromPayload(errReader(0), APIEndpointWebHookRegistry)
 	if err.Error() != ioutilReaderTestErrorMsg {
 		t.Errorf("expected error: %s,\ngot: %s", ioutilReaderTestErrorMsg, err.Error())
@@ -132,7 +132,7 @@ func TestSwarmErrorsWithIoutilReadAll(t *testing.T) {
 }
 
 func TestSwarmErrorsWithEmptyHookParamsFromPayload(t *testing.T) {
-	h := &SwarmServiceHandler{testConfig}
+	h := &SwarmServiceHandler{testConfig, testUpdateOpts}
 	cases := []HookParamsFromPayload{
 		{"", ""},
 		{"test", ""},

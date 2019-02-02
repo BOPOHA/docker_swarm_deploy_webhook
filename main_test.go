@@ -111,15 +111,19 @@ var (
 		},
 		Services: map[string]string{
 			"docker-registry.private-host.com/projectq-app:latest": "projectq-stack-latest_backend",
-			"vorona/docker-deploy-webhook:latest":           "docker-deploy-webhook",
+			"vorona/docker-deploy-webhook:latest":                  "docker-deploy-webhook",
 		},
 		APISecretKey: "EF3rf34g3gfR2G3r3grf",
+	}
+	testUpdateOpts = types.ServiceUpdateOptions{
+		QueryRegistry:    false,
+		RegistryAuthFrom: createBase64AuthData(testConfig.PrivateRegistry),
 	}
 )
 
 func TestServiceHandler_ServeHTTP(t *testing.T) {
 	config := testConfig
-	ts := httptest.NewServer(&SwarmServiceHandler{config})
+	ts := httptest.NewServer(&SwarmServiceHandler{config, testUpdateOpts})
 
 	cases := []Case{
 		{ // case 0 check non-POST method
@@ -175,7 +179,7 @@ func TestServiceHandler_ServeHTTP(t *testing.T) {
 			Query:  fmt.Sprintf("%s=%s", APIWebHookKeyName, config.APISecretKey),
 			Status: http.StatusBadRequest,
 			Result: CR{
-				"error": "can't decode payload: unexpected end of JSON input",
+				"error": "can't decode payload: EOF",
 			},
 		},
 	}
@@ -185,7 +189,7 @@ func TestServiceHandler_ServeHTTP(t *testing.T) {
 
 func TestPayloadParsingRegistry(t *testing.T) {
 	config := testConfig
-	ts := httptest.NewServer(&SwarmServiceHandler{config})
+	ts := httptest.NewServer(&SwarmServiceHandler{config, testUpdateOpts})
 
 	cases := []Case{
 		{ // case 0
@@ -237,7 +241,7 @@ func TestPayloadParsingRegistry(t *testing.T) {
 
 func TestPayloadParsingRegistry2ndConfig(t *testing.T) {
 	config := mainConfig{}
-	ts := httptest.NewServer(&SwarmServiceHandler{config})
+	ts := httptest.NewServer(&SwarmServiceHandler{config, testUpdateOpts})
 
 	cases := []Case{
 		{ // TestPayloadParsingRegistry2ndConfig case 0
@@ -267,7 +271,7 @@ func TestPayloadParsingRegistry2ndConfig(t *testing.T) {
 
 func TestPayloadParsingHub(t *testing.T) {
 	config := testConfig
-	ts := httptest.NewServer(&SwarmServiceHandler{config})
+	ts := httptest.NewServer(&SwarmServiceHandler{config, testUpdateOpts})
 
 	cases := []Case{
 		{ // case 0
@@ -340,6 +344,7 @@ func TestShutdownHandler_ServeHTTP(t *testing.T) {
 	}
 	t.Errorf("responce002 error: %v", err)
 }
+
 func TestErrorsStartService(t *testing.T) {
 	url := "127.0.0.1:9876"
 	l, errL := net.Listen("tcp4", url)
@@ -357,63 +362,68 @@ func TestErrorsStartService(t *testing.T) {
 
 func runTests(t *testing.T, ts *httptest.Server, cases []Case, cfg mainConfig) {
 
-	defer os.Remove(dockerSimpleSocket)
 	for idx, item := range cases {
-		var (
-			err    error
-			result interface{}
-			req    *http.Request
-		)
-
-		listenerSimpleSocketServer, e := startSimpleSocketServer(dockerSimpleSocket, item.DResp)
-		if e != nil {
-			LogErr(errExt{"can't start startSimpleSocketServer:", e})
-		}
-		caseName := fmt.Sprintf("case %d: [%s] %s %s", idx, item.Method, item.Path, item.Query)
-		url := ts.URL + item.Path + "?" + item.Query
-
-		if err01 := os.Setenv(configENVName, convertInterfaceToBase64String(cfg)); err01 != nil {
-			t.Errorf("can't set OS environ with error: %s", err01)
-		}
-		if err02 := os.Setenv(dockerHostKey, item.DHost); err02 != nil {
-			t.Errorf("can't set OS environ with error: %s", err02)
-		}
-
-		if item.Method == http.MethodPost {
-			reqBody := strings.NewReader(item.Payload)
-			req, _ = http.NewRequest(item.Method, url, reqBody)
-			req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-		} else {
-			req, _ = http.NewRequest(item.Method, url, nil)
-		}
-
-		resp, err := client.Do(req)
-		if err != nil {
-			t.Errorf("[%s] request error: %v", caseName, err)
-			continue
-		}
-		body, _ := ioutil.ReadAll(resp.Body)
-		resp.Body.Close()
-		if resp.StatusCode != item.Status {
-			t.Errorf("[%s] expected http status %v, got %v", caseName, item.Status, resp.StatusCode)
-			t.Errorf("[%s] got %s", caseName, body)
-			continue
-		}
-
-		err = json.Unmarshal(body, &result)
-		if err != nil {
-			t.Errorf("[%s] cant unpack json: %v", caseName, err)
-			continue
-		}
-		body, _ = json.Marshal(result)
-		expected, _ := json.Marshal(item.Result)
-
-		if !bytes.Equal(body, expected) {
-			t.Errorf("[%d] results not match\nGot     : %#v\nExpected: %#v", idx, string(body), string(expected))
-			continue
-		}
-		withouterrIOClose(listenerSimpleSocketServer)
+		runCase(t, ts, idx, item, cfg)
 	}
+}
+
+func runCase(t *testing.T, ts *httptest.Server, idx int, item Case, cfg mainConfig) {
+	os.Remove(dockerSimpleSocket)
+	var (
+		err    error
+		result interface{}
+		req    *http.Request
+	)
+
+	listenerSimpleSocketServer, e := startSimpleSocketServer(dockerSimpleSocket, item.DResp)
+	defer withouterrIOClose(listenerSimpleSocketServer)
+	if e != nil {
+		LogErr(errExt{"can't start startSimpleSocketServer:", e})
+	}
+	caseName := fmt.Sprintf("case %d: [%s] %s %s", idx, item.Method, item.Path, item.Query)
+	url := ts.URL + item.Path + "?" + item.Query
+
+	if err01 := os.Setenv(configENVName, convertInterfaceToBase64String(cfg)); err01 != nil {
+		t.Errorf("can't set OS environ with error: %s", err01)
+	}
+	if err02 := os.Setenv(dockerHostKey, item.DHost); err02 != nil {
+		t.Errorf("can't set OS environ with error: %s", err02)
+	}
+
+	if item.Method == http.MethodPost {
+		reqBody := strings.NewReader(item.Payload)
+		req, _ = http.NewRequest(item.Method, url, reqBody)
+		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	} else {
+		req, _ = http.NewRequest(item.Method, url, nil)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Errorf("[%s] request error: %v", caseName, err)
+		return
+	}
+	body, _ := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != item.Status {
+		t.Errorf("[%s] expected http status %v, got %v", caseName, item.Status, resp.StatusCode)
+		t.Errorf("[%s] got %s", caseName, body)
+		return
+	}
+
+	err = json.Unmarshal(body, &result)
+	if err != nil {
+		t.Errorf("[%s] cant unpack json: %v", caseName, err)
+		return
+	}
+	body, _ = json.Marshal(result)
+	expected, _ := json.Marshal(item.Result)
+
+	if !bytes.Equal(body, expected) {
+		t.Errorf("[%d] results not match\nGot     : %#v\nExpected: %#v", idx, string(body), string(expected))
+		return
+	}
+
 }
 
 func runChechconfigENVName(t *testing.T, testBase64String, expectedError string) {
